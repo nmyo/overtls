@@ -81,8 +81,16 @@ pub struct CmdOpt {
     pub role: Role,
 
     /// Config file path
-    #[arg(short, long, value_name = "file path")]
-    pub config: std::path::PathBuf,
+    #[arg(short, long, value_name = "file path", conflicts_with = "url_of_node")]
+    pub config: Option<std::path::PathBuf>,
+
+    /// URL of the server node used by client
+    #[arg(short, long, value_name = "url", conflicts_with = "config")]
+    pub url_of_node: Option<String>,
+
+    /// Local listening address associated with the URL
+    #[arg(short, long, value_name = "addr:port", requires = "url_of_node", conflicts_with = "config")]
+    pub listen_addr: Option<std::net::SocketAddr>,
 
     /// Cache DNS Query result
     #[arg(long)]
@@ -92,18 +100,13 @@ pub struct CmdOpt {
     #[arg(short, long, value_name = "level", value_enum, default_value = "info")]
     pub verbosity: ArgVerbosity,
 
-    #[cfg(unix)]
     #[arg(short, long)]
-    /// Daemonize for unix family.
+    /// Daemonize for unix family or run as service for windows
     pub daemonize: bool,
 
-    /// Generate QR code for client.
+    /// Generate URL of the server node for client.
     #[arg(short, long)]
-    pub qrcode: bool,
-
-    /// QR code contains certificate content.
-    #[arg(long)]
-    pub qrcode_cert: bool,
+    pub generate_url: bool,
 
     /// Use C API for client.
     #[arg(long)]
@@ -116,6 +119,32 @@ impl CmdOpt {
     }
 
     pub fn parse_cmd() -> CmdOpt {
-        clap::Parser::parse()
+        fn output_error_and_exit<T: std::fmt::Display>(msg: T) -> ! {
+            eprintln!("{}", msg);
+            std::process::exit(1);
+        }
+
+        let args: CmdOpt = clap::Parser::parse();
+        if args.role == Role::Server {
+            if args.config.is_none() {
+                output_error_and_exit("Config file is required for server");
+            }
+            if args.c_api {
+                output_error_and_exit("C API is not supported for server");
+            }
+            if args.generate_url {
+                output_error_and_exit("Generate URL is not supported for server");
+            }
+            if args.listen_addr.is_some() {
+                output_error_and_exit("Listen address is not supported for server");
+            }
+            if args.url_of_node.is_some() {
+                output_error_and_exit("Node URL is not supported for server");
+            }
+        }
+        if args.role == Role::Client && args.config.is_none() && args.url_of_node.is_none() {
+            output_error_and_exit("Config file or node URL is required for client");
+        }
+        args
     }
 }

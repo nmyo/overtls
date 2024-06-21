@@ -3,7 +3,7 @@
 #==========================================================
 #   System Request: Debian 7+ / Ubuntu 14.04+ / Centos 7+
 #   Author: ssrlive
-#   Dscription: overTLS onekey
+#   Description: overTLS onekey for musl building
 #   Version: 1.0.0
 #==========================================================
 
@@ -27,13 +27,13 @@ function get_binary_target() {
     local CPU_ARCH=`uname -m`
     case ${CPU_ARCH} in
         x86_64)
-            _binary_target="x86_64-unknown-linux-gnu"
+            _binary_target="x86_64-unknown-linux-musl"
             ;;
         aarch64)
-            _binary_target="aarch64-unknown-linux-gnu"
+            _binary_target="aarch64-unknown-linux-musl"
             ;;
         armv7l)
-            _binary_target="armv7-unknown-linux-gnueabihf"
+            _binary_target="armv7-unknown-linux-musleabihf"
             ;;
         *)
             echo -e "${Error} ${RedBG} The current CPU architecture ${CPU_ARCH} is not supported. Please contact the author! ${Font}"
@@ -45,16 +45,11 @@ function get_binary_target() {
 
 cpu_arch_target=$(get_binary_target)
 
-overtls_install_sh="overtls-install.sh"
-overtls_install_sh_url="https://raw.githubusercontent.com/shadowsocksr-live/overtls/master/install/overtls-install.sh"
+overtls_install_sh="overtls-install-musl.sh"
+overtls_install_sh_url="https://raw.githubusercontent.com/shadowsocksr-live/overtls/master/install/overtls-install-musl.sh"
 
 overtls_bin_url="https://github.com/shadowsocksr-live/overtls/releases/latest/download/overtls-${cpu_arch_target}.zip"
 overtls_bin_zip_file="overtls-${cpu_arch_target}.zip"
-
-rust_setup_script_url="https://raw.githubusercontent.com/shadowsocksr-live/overtls/master/install/rust.sh"
-rust_setup_script_file="rust.sh"
-
-src_repo_url="https://github.com/shadowsocksr-live/overtls.git"
 
 daemon_script_url="https://raw.githubusercontent.com/shadowsocksr-live/overtls/master/install/overtls-daemon.sh"
 daemon_script_file="overtls-daemon.sh"
@@ -67,7 +62,7 @@ nginx_conf_dir="/etc/nginx/conf.d"
 nginx_conf_file="${nginx_conf_dir}/overtls.conf"
 site_dir="/fakesite"
 site_cert_dir="/fakesite_cert"
-target_bin_path="/usr/bin/overtls"
+target_bin_path="/usr/local/bin/overtls"
 bin_name=overtls
 
 INSTALL_CMD="apt"
@@ -154,41 +149,8 @@ EOF
     fi
 }
 
-function is_glibc_ok() {
-    glibc_version=$(ldd --version | awk '/ldd/{print $NF}')
-    if [[ $(echo -e "$glibc_version\n2.18" | sort -V | head -n1) == "2.18" ]]; then
-        echo -e "${OK} ${GreenBG} GLIBC version is ${glibc_version}, greater than or equal to 2.18, it's OK.${Font} " >&2
-        return 0 # true
-    else
-        echo -e "${Info} ${Yellow} The current system GLIBC version is ${glibc_version}, which is less than 2.18, process must changed ${Font} " >&2
-        return 1 # false
-    fi
-}
-
 function script_file_full_path() {
     echo $(readlink -f "$0")
-}
-
-function is_git_repo() {
-    repo_path="${1}"
-    if [ -d "${repo_path}/.git" ]; then
-        return 0 # 0 is true
-    else
-        return 1 # 1 is false
-    fi
-}
-
-# Check if the script's two levels up directory is "overtls/install"
-function is_script_located_in_source_tree() {
-    local script_dir="$(dirname $(script_file_full_path))"
-
-    parent_dir=$(dirname "$script_dir")  # Get the parent directory
-
-    if [ "$(basename $parent_dir)/$(basename $script_dir)" = "overtls/install" ] && is_git_repo "${parent_dir}"; then
-        return 0    # Return true if the path matches and is a git repo
-    else
-        return 1    # Return false if the path doesn't match or is not a git repo
-    fi
 }
 
 function judge() {
@@ -521,38 +483,6 @@ function download_n_install_overtls_server_bin() {
     echo "${local_bin_path}"
 }
 
-function build_overtls_server_bin() {
-    local old_dir="$(pwd)"
-    local work_dir=""
-    if is_script_located_in_source_tree ; then
-        echo -e "${OK} ${GreenBG} Building ${bin_name} from source tree ${Font}" >&2
-        local script_dir="$(dirname $(script_file_full_path))"
-        work_dir="$(dirname "${script_dir}")"
-    else
-        echo -e "${OK} ${GreenBG} Building ${bin_name} from github ${Font}" >&2
-        work_dir="${old_dir}/overtls"
-        if ! is_git_repo "${work_dir}" ; then
-            rm -rf "${work_dir}"
-            git clone "${src_repo_url}" overtls >&2
-        fi
-    fi
-
-    local local_bin_path="${target_bin_path}"
-
-    cd ${work_dir}
-
-    cargo build --release >&2
-    if [ $? -ne 0 ]; then echo "cargo build failed"; exit -1; fi
-
-    rm -rf ${local_bin_path}
-    local target_dir="$(dirname "${local_bin_path}")"
-    cp target/release/${bin_name} ${target_dir}
-
-    cd ${old_dir}
-
-    echo "${local_bin_path}"
-}
-
 function write_overtls_config_file() {
     local local_cfg_file_path="${1}"
     local dir_path="$(dirname "${local_cfg_file_path}")"
@@ -776,31 +706,7 @@ function print_qrcode() {
     qrencode -t UTF8 "${qrcode}" | cat
 }
 
-function rust_install() {
-    local old_dir="$(pwd)"
-    local work_dir="$(dirname $(script_file_full_path))"
-    cd ${work_dir}
-
-    if [ ! -f "./${rust_setup_script_file}" ]; then
-        if ! curl -L ${rust_setup_script_url} -o ./${rust_setup_script_file} ; then
-            echo -e "${RedBG} Failed to download ${rust_setup_script_file} script! ${Font}"
-            exit 1
-        fi
-        chmod +x ./${rust_setup_script_file}
-    fi
-
-    ./${rust_setup_script_file}
-
-    cd ${old_dir}
-}
-
 function install_overtls_remote_server() {
-    is_glibc_ok
-    if [ $? -ne 0 ]; then
-        echo -e "${Info} ${Yellow} GLIBC version is too low, so we have to install rust and build ${service_name} from source code ${Font}"
-        echo -e "${Info} ${Yellow} This will take a long time, please be patient ${Font}"
-        rust_install
-    fi
     check_system
     dependency_install
 
@@ -817,12 +723,7 @@ function install_overtls_remote_server() {
     acme_cron_update
     nginx_web_server_config_end
 
-    local svc_bin_path=""
-    if is_glibc_ok ; then
-        svc_bin_path=$(download_n_install_overtls_server_bin)
-    else
-        svc_bin_path=$(build_overtls_server_bin)
-    fi
+    local svc_bin_path=$(download_n_install_overtls_server_bin)
     local cfg_path=$(write_overtls_config_file "${config_file_path}")
 
     if [ -f "${svc_bin_path}" ]; then

@@ -1,5 +1,10 @@
 #! /bin/sh
 
+if [ "$(uname)" != "Darwin" ]; then
+    echo "This script is for macOS only."
+    exit 1
+fi
+
 echo "Setting up the rust environment..."
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios x86_64-apple-darwin aarch64-apple-darwin
 cargo install cbindgen
@@ -26,11 +31,10 @@ cargo build --release --target aarch64-apple-ios-sim
 echo "Generating includes..."
 mkdir -p target/include/
 rm -rf target/include/*
-cbindgen --config cbindgen.toml -l C -o target/include/overtls.h
+cbindgen --config cbindgen.toml -l C --cpp-compat -o target/include/overtls.h
 cat > target/include/overtls.modulemap <<EOF
 framework module overtls {
     umbrella header "overtls.h"
-
     export *
     module * { export * }
 }

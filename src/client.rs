@@ -181,8 +181,7 @@ async fn client_traffic_loop<T: AsyncRead + AsyncWrite + Unpin, S: AsyncRead + A
                 ws_stream.send(Message::Binary(buf.to_vec())).await?;
                 log::trace!("{} -> {} length {}", peer_addr, target_addr, buf.len());
 
-                #[cfg(target_os = "android")]
-                if let Err(e) = crate::android::traffic_status_update(len, 0) {
+                if let Err(e) = crate::traffic_status::traffic_status_update(len, 0) {
                     log::error!("{}", e);
                 }
 
@@ -191,8 +190,7 @@ async fn client_traffic_loop<T: AsyncRead + AsyncWrite + Unpin, S: AsyncRead + A
             result = ws_stream.next() => {
                 let msg = result.ok_or("message not exist")??;
 
-                #[cfg(target_os = "android")]
-                if let Err(e) = crate::android::traffic_status_update(0, msg.len()) {
+                if let Err(e) = crate::traffic_status::traffic_status_update(0, msg.len()) {
                     log::error!("{}", e);
                 }
 
@@ -263,8 +261,7 @@ pub(crate) async fn create_ws_stream<S: AsyncRead + AsyncWrite + Unpin>(
 
     let b64_dst = dst_addr.as_ref().map(|dst_addr| addess_to_b64str(dst_addr, false));
 
-    let server_ip = client.server_ip_addr.ok_or("server ip addr")?.to_string();
-    let uri = format!("ws://{}/{}/", server_ip, tunnel_path);
+    let uri = format!("ws://{}/{}/", client.server_host, tunnel_path);
 
     let uri = WeirdUri::new(&uri, b64_dst, udp_tunnel, client.client_id.clone());
 
